@@ -2,40 +2,47 @@ package main
 
 import (
 	"fmt"
-	"time"
+
+	"example.com/concurrency/filemanager"
+	"example.com/concurrency/prices"
 )
 
-func greet(phrase string, doneChan chan bool) {
-	fmt.Println("Hello!", phrase)
-	doneChan<-true
-}
-
-func slowGreet(phrase string, doneChan chan bool) {
-	time.Sleep(2 * time.Second) // simulate a slow, long-taking task
-	fmt.Println("Hello!", phrase)
-	doneChan <- true
-	close(doneChan) //close the channel in the op. that takes the most time
-}
-
 func main() {
-	//dones := make([] chan bool, 4)
-	isDone:=make(chan bool)
-	// dones[0] = make(chan bool)
-	// dones[1] = make(chan bool)
-	// dones[2] = make(chan bool)
-	// dones[3] = make(chan bool)
-	go greet("Nice to meet you!", isDone)
-	go greet("How are you?", isDone)
-	go slowGreet("⌛ How ... are ... you ...?", isDone)
-	go greet("I'm liking the GoLang!", isDone)
-	//fmt.Println(<- isDone) //Optnl.
+	taxRates := []float64{0, 0.07, 0.1, 0.15}
+	doneChans := make([]chan bool,len(taxRates))
+	errorChans := make([]chan error, len(taxRates))
 
-	// for _, done := range dones{
-	// 	<-done
-	// }
+	for idx, taxRate := range taxRates {
+		doneChans[idx] = make(chan bool)
+		errorChans[idx] = make(chan error)
+		fm := filemanager.New("prices.txt", fmt.Sprintf("result_%.0f.json", taxRate*100))
+		// cmdm := cmdmanager.New()
+		priceJob := prices.NewTaxIncludedPriceJob(fm, taxRate)
+		go priceJob.Process(doneChans[idx], errorChans[idx])
 
-	for range isDone{
-		//fmt.Println(doneChan)
+		// if err != nil {
+		// 	fmt.Println("Could not process job")
+		// 	fmt.Println(err)
+		// }
 	}
 
+	// Err. Handling with multiple-channels
+	for idx:= range taxRates {
+    select {
+	case err:= <-errorChans[idx]:
+		if err != nil{
+			fmt.Println("🔴 ERROR: ",err)
+		}
+	case <-doneChans[idx]:
+		fmt.Println("Done ✅")	
+	 }
+	}
+
+	// for _, errorChan := range errorChans{
+	// 	<- errorChan
+	// }
+
+	// for _, doneChan := range doneChans{
+	// 	<- doneChan
+	// }
 }
